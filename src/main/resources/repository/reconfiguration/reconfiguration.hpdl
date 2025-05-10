@@ -1,0 +1,228 @@
+(define (domain reconfiguration)
+ (:requirements :typing :negative-preconditions :universal-preconditions :numeric-fluents :conditional-effects)
+ (:types port instance component number)
+ (:predicates
+    (type ?i - instance ?c - component)
+    (installed ?i - instance)
+    (running ?i - instance)
+    (active ?p - port)
+    (bound ?p - port ?i1 ?i2 - instance)
+    (installed-require ?c - component ?p - port)
+    (installed-provide ?c - component ?p - port)
+    (running-require ?c - component ?p - port)
+    (running-provide ?c - component ?p - port)
+    (version ?i - instance ?v - number)
+    (latest-version ?c - component ?v - number)
+    (needs-update ?i - instance)
+    (scale-down-target ?i - instance)
+    (scale-up-target ?i - instance)
+ )
+
+ (:functions
+    (instance-number) - number
+ )
+
+;; ACTIONS
+
+ (:action createInstance
+    :parameters (?c - component)
+    :precondition ()
+    :effect (and (instance (instance-number))
+                    (type (instance-number) ?c)
+                    (increase (instance-number) 1))
+ )
+
+ (:action installInstance
+    :parameters (?i - instance)
+    :precondition (and (not (installed ?i)))
+    :effect (and (installed ?i) (forall (?p - port)
+                                     (when (and (installed-provide ?c ?p) (type ?i ?c))
+                                              (active ?p)
+                                     )
+                             )
+             )
+ )
+
+  (:action startInstance
+     :parameters (?i - instance)
+     :precondition (and (not (running ?i)) (installed ?i))
+     :effect (and (running ?i) (forall (?p - port) (when (and (running-provide ?c ?p) (type ?i ?c)) (active ?p)))
+    	          (forall (?p - port) (when (and (installed-provide ?c ?p) (type ?i ?c))(not (active ?p))))
+    	     )
+ )
+
+ (:action stopInstance
+    :parameters (?i - instance)
+    :precondition (and (running ?i) (not (bound ?p ?i ?i1)))
+    :effect (and (not (running ?i)))
+ )
+
+ (:action terminateInstance
+    :parameters (?i - instance)
+    :precondition (and (installed ?i) (not (bound ?p ?i ?i1)))
+    :effect (and (not (installed ?i)))
+ )
+
+ (:action bind
+     :parameters (?p - port ?i1 ?i2 - instance)
+     :precondition ()
+     :effect (and (bound ?p ?i1 ?i2))
+ )
+
+ (:action unbind
+   :parameters (?p - port ?i1 ?i2 - instance)
+   :precondition()
+   :effect (not (bound ?p ?i1 ?i2))
+ )
+
+ (:action markForUpdate
+    :parameters (?i - instance)
+    :precondition (and (installed ?i) (not (needs-update ?i)))
+    :effect (and (needs-update ?i))
+ )
+
+ (:action update
+    :parameters (?i - instance ?v - number)
+    :precondition (and (installed ?i) (needs-update ?i) (latest-version ?c ?v))
+    :effect (and (not (needs-update ?i)) (version ?i ?v))
+ )
+
+;; TASKS
+
+(:task installInstance
+    :parameters (?i - instance)
+    (:method component-instance-is-not-installed
+        :precondition (not (installed ?i))
+        :tasks (sequence (activateInstance ?i))
+    )
+    (:method component-instance-is-already-installed-with-at-least-one-provide-port-bound
+        :precondition (and (type ?i ?c) (installed ?i) (installed-provide ?c ?p) (bound ?p ?i1 ?i))
+        :tasks (sequence (installConfiguration ?c))
+    )
+    (:method component-instance-already-installed-and-free
+        :precondition (and (type ?i ?c) (installed ?i) (forall (?p - port) (and (installed-provide ?c ?p) (not (bound ?p ?i1 ?i)))))
+        :tasks ()
+    )
+)
+
+ (:task activateInstance
+     :parameters (?i - instance)
+     ; there are require ports which are active
+     (:method port-is-active-and-bound
+         :precondition (and (type ?i ?c) (forall (?p - port) (and (installed-require ?c ?p)
+                                                                  (active ?p) (bound ?p ?i ?i1))
+                                          )
+                       )
+         :tasks (sequence (startInstance ?i))
+     )
+     (:method port-is-active-and-unbound
+         :precondition (and (installed-require ?c ?p) (active ?p) (type ?i ?c) (not (installed ?i)) (type ?i1 ?c1) (not (bound ?p ?i ?i1))
+                            (or (installed-provide ?c1 ?p) (running-provide ?c1 ?p))(or (installed ?i1) (running ?i1))
+                       )
+         :tasks (sequence (bind ?p ?i ?i1) (activateInstance ?i))
+     )
+     ; there are require ports which are inactive
+     (:method require-port-inactive
+         :precondition (and (type ?i ?c) (installed-require ?c ?p) (not (active ?p)))
+         :tasks (sequence (activatePort ?c ?p) (activateInstance ?i))
+     )
+     (:method no-require-ports
+         :precondition ()
+         :tasks (sequence (startInstance ?i))
+     )
+ )
+
+  (:task activatePort
+      :parameters (?c - component ?p - port)
+      (:method port-is-inactive-and-there-is-provide-port-in-active-state-of-some-component
+          :precondition (and (installed-provide ?c1 ?p) (not (= ?c ?c1)))
+          :tasks (sequence (installConfiguration ?c1))
+      )
+      (:method port-is-inactive-and-there-is-provide-port-in-running-state-of-some-component
+          :precondition (and (running-provide ?c1 ?p))
+          :tasks (sequence (runConfiguration ?c1))
+      )
+  )
+
+(:task deactivateProvidePorts
+    :parameters (?c - component ?i - instance)
+    (:method there-is-bound-port-but-needed-for-running
+      :precondition (and (type ?i ?c) (installed-provide ?c ?p) (bound ?p ?i1 ?i) (installed ?i) (running-provide ?c ?p))
+      :tasks (sequence (runInstance ?i) (unbindPorts ?i))
+    )
+    (:method installed-provide-port-is-free
+      :precondition (and (installedProvide ?c ?p) (type ?i ?c) (not (bound ?p ?i1 ?i)) (installed ?i))
+      :tasks (sequence (runInstance ?i) (unbindPorts ?i))
+    )
+    (:method installed-provide-port-is-bound
+      :precondition (and (installed-provide ?c ?p) (type ?i ?c) (bound ?p ?i1 ?i) (installed ?i))
+      :tasks (sequence (runConfiguration ?c))
+    )
+    (:method free-to-run
+      :precondition ()
+      :tasks (sequence (runInstance ?i) (unbindPorts ?i))
+    )
+  )
+
+  (:task unbindPorts
+      :parameters (?i - instance)
+      (:method there-is-bound-port-but-needed-for-running
+         :precondition (and (type ?i ?c) (installed-require ?c ?p) (bound ?p ?i ?i1) (running-require ?c ?p))
+         :tasks ()
+      )
+      (:method there-is-bound-port
+         :precondition (and (type ?i ?c) (installed-require ?c ?p) (bound ?p ?i ?i1))
+         :tasks (sequence (unbind ?p ?i ?i1) (unbindPorts ?i))
+      )
+      (:method do-nothing
+        :precondition ()
+        :tasks ()
+      )
+  )
+
+  (:task installConfiguration
+      :parameters (?c - component)
+      (:method there-is-free-component-instance
+        :precondition (and (instance ?i) (type ?i ?c) (not (installed ?i)) (not (running ?i)))
+        :tasks (sequence (installInstance ?i))
+      )
+      (:method no-free-instance
+        :precondition ()
+        :tasks (sequence (createInstance ?c) (installConfiguration ?c))
+      )
+   )
+
+   (:task runConfiguration
+       :parameters (?c - component)
+       (:method there-is-free-component-instance
+         :precondition (and (instance ?i) (type ?i ?c) (not (installed ?i)) (not (running ?i)))
+         :tasks (sequence (installInstance ?i) (runInstanceTask ?i))
+       )
+       (:method no-free-instance
+         :precondition ()
+         :tasks (sequence (createInstance ?c) (runConfiguration ?c))
+       )
+   )
+
+  (: task runInstanceTask
+        :parameters (?i - instance)
+        (:method port-is-active-and-bound
+          :precondition (and (type ?i ?c) (forall (?p - port) (and (running-require ?c ?p) (active ?p) (bound ?p ?i ?i1))))
+          ;(or (and (installed-provide ?c1 ?p) (installed ?i1)) (and (running-provide ?c1 ?p) (running ?i1)))
+          :tasks (sequence (deactivateProvidePorts ?c ?i))
+        )
+        (:method port-is-active-and-unbound
+           :precondition (and (type ?i ?c) (running-require ?c ?p) (active ?p) (installed ?i) (type ?i1 ?c1) (not (bound ?p ?i ?i1))
+                              (or (and (installed-provide ?c1 ?p) (installed ?i1)) (and (running-provide ?c1 ?p) (running ?i1)))
+                         )
+           :tasks (sequence (bind ?p ?i ?i1) (runInstanceTask ?i))
+        )
+        (:method port-is-inactive
+              :precondition (and (type ?i ?c) (runningRequire ?c ?p) (not (active ?p)))
+              :tasks (sequence (activatePort ?c ?p) (runInstanceTask ?i))
+        )
+        (:method there-are-no-require-ports
+          :precondition (type ?i ?c)
+          :tasks (sequence (deactivateProvidePorts ?c ?i))
+        )
+  )
