@@ -14,5 +14,5 @@
      (installed-provide c2 p21)
      (= (instance-number) 0)
  )
- (:goal-tasks (sequence (run-configuration c1)))
+ (:goal-tasks (sequence ((run-configuration c1))))
 )

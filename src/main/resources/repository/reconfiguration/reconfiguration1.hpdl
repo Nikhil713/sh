@@ -1,4 +1,4 @@
-(define (domain deployment)
+(define (domain reconfiguration1)
  (:requirements :typing :negative-preconditions :universal-preconditions :numeric-fluents :conditional-effects)
  (:types port instance component)
  (:predicates

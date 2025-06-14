@@ -11,7 +11,7 @@ object Client extends App {
 
   //PlanningServices.planWithGivenDomainAndProblemNamePrintPlans("dwr", "problem", 1)
 
-  //PlanningServices.planWithGivenDomainAndProblemNamePrintPlans("deployment", "p-dashboard", 1)
+//  PlanningServices.planWithGivenDomainAndProblemNamePrintPlans("deployment", "p-dashboard", 1)
 
   //PlanningServices.planWithGivenDomainAndProblemNamePrintPlans("cafeteria", "problem", 1)
 
@@ -19,4 +19,5 @@ object Client extends App {
 
   //PlanningServices.planWithGivenDomainAndProblemNamePrintPlans("basic", "problem", 1)
 
+   PlanningServices.planWithGivenDomainAndProblemNamePrintPlans("reconfiguration", "scaleUp", 1)
 }

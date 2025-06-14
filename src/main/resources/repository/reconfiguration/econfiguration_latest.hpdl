@@ -1,29 +1,30 @@
-(define (domain reconfiguration)
+(define (domain reconfiguration_latest)
  (:requirements :typing :negative-preconditions :universal-preconditions :numeric-fluents :conditional-effects)
  (:types component instance port space)
- (:predicates
-     (instance ?i - instance)
+  (:predicates
+    (instance ?i - instance)
+    
+    (space-has-component ?s - space ?c - component)
+    (type ?i - instance ?c - component)
+    (installed ?i - instance)
+    (running ?i - instance)
+    (port-active-instance ?p - port ?i - instance)
+    (bound ?p - port ?i1 ?i2 - instance)
+    (installed-require ?c - component ?p - port)
+    (installed-provide ?c - component ?p - port)
+    (running-require ?c - component ?p - port)
+    (running-provide ?c - component ?p - port)
 
-     (space-has-component ?s - space ?c - component)
-     (type ?i - instance ?c - component)
-     (installed ?i - instance)
-     (running ?i - instance)
-     (port-active-instance ?p - port ?i - instance)
-     (bound ?p - port ?i1 ?i2 - instance)
-     (installed-require ?c - component ?p - port)
-     (installed-provide ?c - component ?p - port)
-     (running-require ?c - component ?p - port)
-     (running-provide ?c - component ?p - port)
+    (require-port ?c - component ?p - port)
+    
+    (active ?p - port)
+    (needs-update ?i - instance)
+    (scale-down-target ?i - instance)
+    (scale-up-target ?i - instance)
 
-     (require-port ?c - component ?p - port)
-
-     (active ?p - port)
-     (needs-update ?i - instance)
-     (scale-down-target ?i - instance)
-     (scale-up-target ?i - instance)
-
-     (next-instance-id ?i - instance)
- )
+    (next-instance-id ?i - instance)
+    
+  )
 
 (:functions
 
@@ -31,7 +32,6 @@
     (component-instance-number ?c - component) - number
     (component-should-have-instance-number ?c - component)- number
     (component-version ?c - component) - number
-    (next-instance-id) - number
     ; (require-port-number ?c - component ?p - port) - number
     (temp) - number
 
@@ -40,18 +40,24 @@
     (instance-version ?i - instance) - number
     (require-port-satisfied ?p - port ?i - instance) - number
 )
+
 ;; ACTIONS
 
-;; Requirement
+;; Requirement 
 (:action createInstance
-:parameters (?c - component)
+:parameters (?s - space ?c - component ?i - instance)
 :precondition ()
 :effect (and
-  (instance (instance-number)
-  (type (instance-number) ?c)
+  (instance ?i)
+  (type ?i ?c)
+  (assign (instance-version ?i) (component-version ?c))
   (increase (instance-number) 1)
   (increase (component-instance-number ?c) 1)
-  (increase (next-instance-id) 1)
+  (forall (?p - port)
+    (when (require-port ?c ?p)
+      (assign (require-port-satisfied ?p ?i) 0)
+      )
+    )
 )
 )
 
@@ -259,8 +265,7 @@
   :precondition (and (installed ?i) (not (running ?i)))
   :effect (running ?i)
 )
-
-;; new ones
+;; TASKS
 
 (:task installConfiguration
   :parameters (?c - component)
@@ -276,7 +281,6 @@
        (installConfiguration ?c))
   )
 )
-
 
 (:task installInstance
   :parameters (?i - instance)
@@ -296,7 +300,7 @@
 (:task activateInstance
   :parameters (?i - instance)
   (:method port-is-active-and-bound
-    :precondition (and (type ?i ?c)
+    :precondition (and (type ?i ?c) 
       (forall (?p - port) (and (installed-require ?c ?p)
                                (active ?p) (bound ?p ?i ?i1))))
     :tasks (sequence
@@ -304,7 +308,7 @@
   )
   (:method port-is-active-and-unbound
     :precondition (and (installed-require ?c ?p) (active ?p)
-                       (type ?i ?c) (not (installed ?i))
+                       (type ?i ?c) (not (installed ?i)) 
                        (type ?i1 ?c1) (not (bound ?p ?i ?i1))
                        (or (installed-provide ?c1 ?p) (running-provide ?c1 ?p))
                        (or (installed ?i1) (running ?i1)))
@@ -378,26 +382,21 @@
       )
   )
 
-
-(:task runConfiguration
-  :parameters (?c - component)
-  (:method there-is-free-component-instance
-    :precondition (and
-      (instance ?i)
-      (type ?i ?c)
-      (installed ?i)
-      (not (running ?i)))
-    :tasks (sequence
-      (activateInstance ?i))
-  )
-  (:method no-free-instance
-    :precondition ()
-    :tasks (sequence
-      (installConfiguration ?c)
-      (runConfiguration ?c))
-  )
-)
-
+   (:task runConfiguration
+       :parameters (?c - component)
+       (:method there-is-free-component-instance
+         :precondition (and (instance ?i) (type ?i ?c) (not (installed ?i)) (not (running ?i)))
+         :tasks (sequence
+                (installInstance ?i)
+                (runInstanceTask ?i))
+       )
+       (:method no-free-instance
+         :precondition ()
+         :tasks (sequence
+                (createInstance ?s ?c ?i)
+                (runConfiguration ?c))
+       )
+   )
 
 (:task runInstanceTask
     :parameters (?i - instance)
@@ -463,22 +462,32 @@
     )
 )
 
+; (:task updateVersionTask
+;     :parameters (?i - instance ?v - number)
+;     (:method perform-version-update
+;         :precondition (needs-update ?i)
+;         :tasks (sequence
+;             (stopInstance ?i)
+;             (update ?i ?v)
+;             (startInstance ?i)
+;             (runInstanceTask ?i)
+;         )
+;     )
+; )
+
 (:task scaleUp
-  :parameters (?c - component)
-  (:method scale-if-needed
+  :parameters (?s - space ?c - component ?i - instance)
+  (:method need-to-scale
     :precondition (< (component-instance-number ?c) (component-should-have-instance-number ?c))
     :tasks (sequence
-      (createInstance ?c)
-      (installConfiguration ?c)
-      (runConfiguration ?c)
-      (scaleUp ?c) ; recursive call
+      (createInstance ?s ?c ?i)
+      (installConfiguration ?c) ; assuming install per instance
+      (runInstance ?i)           ; example run/start task
+      (scaleUp ?s ?c (next-instance-id ?c)) ; recursive call with next instance id
     )
   )
-  (:method done-scaling
-    :precondition (>= (component-instance-number ?c) (component-should-have-instance-number ?c))
-    :tasks () ; do nothing
-  )
 )
+
 
 
 )
