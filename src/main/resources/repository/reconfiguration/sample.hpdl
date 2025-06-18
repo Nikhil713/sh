@@ -1,0 +1,38 @@
+(define (problem test-reconfiguration)
+  (:domain reconfiguration)
+
+  (:objects
+    compA - component
+    inst1 - instance
+    port1 - port
+  )
+
+  (:init
+    ;; Component and port definitions
+    (component compA)
+    (port port1)
+
+    ;; Component requires port1
+    (require-port compA port1)
+
+    ;; No instance created yet
+    ;; Instance id is free to create
+
+    ;; Instance numbers start at 0
+    (= (instance-number) 0)
+    (= (component-instance-number compA) 0)
+
+    ;; Instance inst1 does not exist yet
+    ;; So no predicates about inst1
+
+    ;; next instance id available is inst1 (assuming)
+    (next-instance-id inst1)
+  )
+
+  (:goal
+    (and
+      (instance inst1)
+      (installed inst1)
+    )
+  )
+)

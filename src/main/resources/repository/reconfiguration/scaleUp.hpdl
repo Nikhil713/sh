@@ -1,0 +1,34 @@
+(define (problem scale-up-example)
+ (:domain deployment)
+ (:requirements :strips :fluents)
+ (:objects
+     s0 - space
+     c0 c1 c2 - component
+     p1 p2 p3 - port
+ )
+    (:init
+        (= (instance-number) 0)
+
+        ;; Component instance counters
+        (= (component-instance-number c0) 0)
+        (= (component-instance-number c1) 0)
+        (= (component-instance-number c2) 0)
+
+        (= (component-should-have-instance-number c0) 10)
+        (= (next-instance-id) 0)
+
+        ;; Ports associated with components (example)
+        (installed-require c0 p1)
+        (running-require c0 p1)
+        (running-require c0 p2)
+        (installed-provide c1 p1)
+        (installed-require c1 p2)
+        (installed-provide c2 p2)
+    )
+
+ (:goal-tasks
+     (sequence
+         (run-configuration c0)
+     )
+ )
+)
