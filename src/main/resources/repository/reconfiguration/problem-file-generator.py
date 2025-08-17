@@ -1,4 +1,4 @@
-def generate_problem_file(num_components, target_instances, output_file="scale-up.pddl"):
+def generate_problem_file(num_components, target_instances,init_instances, output_file="scale-up.pddl"):
     components = [f"c{i}" for i in range(num_components)]
     ports = [f"p{i}" for i in range(num_components)]
 
@@ -12,7 +12,7 @@ def generate_problem_file(num_components, target_instances, output_file="scale-u
     ]
 
     for c in components:
-        init.append(f"    (= (component-instance-number {c}) 0)")
+        init.append(f"    (= (component-instance-number {c}) {init_instances})")
         init.append(f"    (= (component-should-have-instance-number {c}) {target_instances})")
 
     for i, c in enumerate(components):
@@ -44,6 +44,5 @@ def generate_problem_file(num_components, target_instances, output_file="scale-u
     print(f"✅ Problem file generated: {output_file}")
 
 
-# Example usage:
 if __name__ == "__main__":
-    generate_problem_file(num_components=8, target_instances=1)  # change as needed
+    generate_problem_file(num_components=4, init_instances=1, target_instances=5)

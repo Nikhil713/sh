@@ -1,0 +1,87 @@
+;; HPDL domain for SH planner - Reconfiguration Domain (Cleaned and SH-compatible)
+
+(define (domain reconfiguration)
+  (:requirements :typing :hierarchical)
+
+  (:types
+    component instance port
+  )
+
+  (:predicates
+    (instance ?i - instance)
+    (type ?i - instance ?c - component)
+    (installed ?i - instance)
+    (running ?i - instance)
+    (created ?i - instance)
+    (not-exist ?i - instance)
+    (bound ?i1 - instance ?p1 - port ?i2 - instance ?p2 - port)
+  )
+
+  ;; Primitive Tasks
+  (:action createInstance
+    :parameters (?i - instance ?c - component)
+    :precondition (not (instance ?i))
+    :effect (and (instance ?i) (type ?i ?c) (created ?i))
+  )
+
+  (:action installInstance
+    :parameters (?i - instance)
+    :precondition (and (instance ?i) (created ?i))
+    :effect (installed ?i)
+  )
+
+  (:action runInstance
+    :parameters (?i - instance)
+    :precondition (and (instance ?i) (installed ?i))
+    :effect (running ?i)
+  )
+
+  (:action terminateInstance
+    :parameters (?i - instance)
+    :precondition (instance ?i)
+    :effect (and (not (instance ?i)) (not-exist ?i))
+  )
+
+  ;; Compound Task: installConfiguration
+  (:task installConfiguration
+    :parameters (?c - component)
+    (:method install-method
+      :parameters (?i - instance)
+      :precondition (not (instance ?i))
+      :tasks (sequence
+        (createInstance ?i ?c)
+        (installInstance ?i))
+    )
+  )
+
+  ;; Compound Task: activateInstance
+  (:task activateInstance
+    :parameters (?i - instance)
+    (:method activate-method
+      :precondition (and (instance ?i) (installed ?i) (not (running ?i)))
+      :tasks (sequence
+        (runInstance ?i))
+    )
+  )
+
+  ;; Compound Task: runConfiguration
+  (:task runConfiguration
+    :parameters (?c - component)
+    (:method there-is-free-component-instance
+      :parameters (?i - instance)
+      :precondition (and
+        (instance ?i)
+        (type ?i ?c)
+        (installed ?i)
+        (not (running ?i)))
+      :tasks (sequence
+        (activateInstance ?i))
+    )
+    (:method no-free-instance
+      :precondition ()
+      :tasks (sequence
+        (installConfiguration ?c)
+        (runConfiguration ?c))
+    )
+  )
+)
